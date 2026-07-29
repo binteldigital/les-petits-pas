@@ -77,7 +77,7 @@ export const Login: React.FC<LoginProps> = ({ users, onLoginSuccess, onSignup })
     try {
       if (selectedRole === 'admin') {
         // Strict Admin Credentials check
-        if (email.toLowerCase() !== 'admin@petitlien.fr' || password !== 'admin' || enteredOtp !== '123456') {
+        if (email.toLowerCase() !== 'admin@petitlien.fr' || (password !== 'admin' && password !== 'admin123') || enteredOtp !== '123456') {
           setIsVerifying(false);
           setErrorMessage("Identifiants ou code d'accès Administration incorrects. Veuillez réessayer.");
           return;
