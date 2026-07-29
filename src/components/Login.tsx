@@ -18,7 +18,6 @@ export const Login: React.FC<LoginProps> = ({ users, onLoginSuccess, onSignup })
   const [fullName, setFullName] = useState('');
   const [childName, setChildName] = useState('');
   const [showPassword, setShowPassword] = useState(false);
-  const [otp, setOtp] = useState<string[]>(Array(6).fill(''));
   const [avatarFileUrl, setAvatarFileUrl] = useState<string>('');
 
   const handleSignupAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -36,35 +35,12 @@ export const Login: React.FC<LoginProps> = ({ users, onLoginSuccess, onSignup })
   const [isSuccess, setIsSuccess] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   
-  const otpRefs = useRef<(HTMLInputElement | null)[]>([]);
-
-  const handleOtpChange = (value: string, index: number) => {
-    const val = value.replace(/[^0-9]/g, '');
-    const newOtp = [...otp];
-    newOtp[index] = val.substring(0, 1);
-    setOtp(newOtp);
-    setErrorMessage(null);
-
-    // Auto-focus next input
-    if (val && index < 5) {
-      otpRefs.current[index + 1]?.focus();
-    }
-  };
-
-  const handleOtpKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, index: number) => {
-    if (e.key === 'Backspace' && !otp[index] && index > 0) {
-      const newOtp = [...otp];
-      newOtp[index - 1] = '';
-      setOtp(newOtp);
-      otpRefs.current[index - 1]?.focus();
-    }
-  };
+  // Removed OTP refs and handlers
 
   const handleRoleChange = (role: 'parent' | 'admin') => {
     setSelectedRole(role);
     setIsSignupMode(false);
     setErrorMessage(null);
-    setOtp(Array(6).fill(''));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -72,14 +48,12 @@ export const Login: React.FC<LoginProps> = ({ users, onLoginSuccess, onSignup })
     setErrorMessage(null);
     setIsVerifying(true);
 
-    const enteredOtp = otp.join('');
-
     try {
       if (selectedRole === 'admin') {
         // Strict Admin Credentials check
-        if (email.toLowerCase() !== 'admin@petitlien.fr' || (password !== 'admin' && password !== 'admin123') || enteredOtp !== '123456') {
+        if (email.toLowerCase() !== 'admin@petitlien.fr' || (password !== 'admin' && password !== 'admin123')) {
           setIsVerifying(false);
-          setErrorMessage("Identifiants ou code d'accès Administration incorrects. Veuillez réessayer.");
+          setErrorMessage("Identifiants Administration incorrects. Veuillez réessayer.");
           return;
         }
 
@@ -106,13 +80,6 @@ export const Login: React.FC<LoginProps> = ({ users, onLoginSuccess, onSignup })
       } else {
         // Parent accounts validation
         if (isSignupMode) {
-          // Check invitation code
-          if (enteredOtp !== '123456') {
-            setIsVerifying(false);
-            setErrorMessage("Code d'invitation Crèche invalide. Saisissez le code d'inscription obligatoire fourni par l'établissement.");
-            return;
-          }
-
           const newRegisteredUser = await supabaseService.signUp(email, password, {
             name: fullName || 'Nouvel Utilisateur',
             role: 'parent',
@@ -157,7 +124,6 @@ export const Login: React.FC<LoginProps> = ({ users, onLoginSuccess, onSignup })
 
   const toggleMode = () => {
     setIsSignupMode(!isSignupMode);
-    setOtp(Array(6).fill(''));
     setFullName('');
     setChildName('');
     setAvatarFileUrl('');
@@ -346,37 +312,7 @@ export const Login: React.FC<LoginProps> = ({ users, onLoginSuccess, onSignup })
             )}
           </div>
 
-          {/* Invitation Code Section (Access Control) */}
-          <div className="bg-surface-container-highest/40 p-5 rounded-lg border border-outline-variant/20">
-            <div className="flex items-center gap-2 mb-2">
-              <span className="material-symbols-outlined text-tertiary text-xl">key</span>
-              <label className="text-[16px] font-bold text-tertiary">
-                {selectedRole === 'admin' ? "Code d'accès Administration" : "Code d'invitation Crèche"}
-              </label>
-            </div>
-            <p className="text-[13px] text-on-surface-variant mb-4 font-semibold leading-snug">
-              {selectedRole === 'admin' 
-                ? "Saisissez le code d'accès administrateur à 6 chiffres." 
-                : "Ce code obligatoire vous a été fourni par la direction."}
-            </p>
-            <div className="grid grid-cols-6 gap-1.5 sm:gap-2 w-full justify-items-center">
-              {otp.map((digit, idx) => (
-                <input
-                  key={idx}
-                  ref={(el) => { otpRefs.current[idx] = el; }}
-                  type="text"
-                  maxLength={1}
-                  pattern="[0-9]*"
-                  inputMode="numeric"
-                  value={digit}
-                  onChange={(e) => handleOtpChange(e.target.value, idx)}
-                  onKeyDown={(e) => handleOtpKeyDown(e, idx)}
-                  className="w-full aspect-[4/5] sm:aspect-square text-center bg-white border border-outline-variant rounded-lg text-[18px] sm:text-[20px] font-bold focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/10 flex items-center justify-center p-0"
-                  required
-                />
-              ))}
-            </div>
-          </div>
+          {/* OTP Section Removed */}
 
           {/* Action Button */}
           <div className="pt-2">

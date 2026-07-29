@@ -172,6 +172,9 @@ create policy "Users can view conversations they are part of" on public.conversa
         )
     );
 
+create policy "Users can insert conversations" on public.conversations
+    for insert with check (auth.uid() is not null);
+
 create policy "Users can see participants in their conversations" on public.conversation_participants
     for select using (
         exists (
@@ -256,6 +259,11 @@ create policy "Parents can view their own child profiles" on public.child_profil
 
 create policy "Parents can update their own child profiles" on public.child_profiles
     for update using (auth.uid() = parent_id or exists (
+        select 1 from public.profiles where id = auth.uid() and role = 'admin'
+    ));
+
+create policy "Parents can insert their own child profiles" on public.child_profiles
+    for insert with check (auth.uid() = parent_id or exists (
         select 1 from public.profiles where id = auth.uid() and role = 'admin'
     ));
 
