@@ -6,6 +6,7 @@ import { Messages } from './components/Messages';
 import { Profile } from './components/Profile';
 import { SocialDirectory } from './components/SocialDirectory';
 import { Navigation } from './components/Navigation';
+import { supabaseService } from './supabaseService';
 
 // MOCK DATA FOR SEEDING
 const INITIAL_USERS: User[] = [
@@ -213,106 +214,68 @@ function App() {
 
   const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
 
-  // LOAD DB FROM LOCALSTORAGE OR SEED
+  // Check session on mount
   useEffect(() => {
-    const localUsers = localStorage.getItem('pl_users');
-    const localPosts = localStorage.getItem('pl_posts');
-    const localStories = localStorage.getItem('pl_stories');
-    const localConversations = localStorage.getItem('pl_conversations');
-    const localNotifications = localStorage.getItem('pl_notifications');
-    const localProfile = localStorage.getItem('pl_child_profile');
-
-    let parsedUsers: User[] = [];
-    if (localUsers) {
-      parsedUsers = JSON.parse(localUsers);
-      setUsers(parsedUsers);
-    } else {
-      parsedUsers = INITIAL_USERS;
-      setUsers(INITIAL_USERS);
-      localStorage.setItem('pl_users', JSON.stringify(INITIAL_USERS));
-    }
-
-    // Restore user session if saved
-    const savedUserId = localStorage.getItem('pl_current_user_id');
-    if (savedUserId) {
-      const foundUser = parsedUsers.find(u => u.id === savedUserId);
-      if (foundUser) {
-        setCurrentUser(foundUser);
+    const initSession = async () => {
+      try {
+        const sessionUser = await supabaseService.getCurrentUserSession();
+        if (sessionUser) {
+          setCurrentUser(sessionUser);
+        } else {
+          // If mock mode, seed or load local users
+          const allProfiles = await supabaseService.getProfiles();
+          if (allProfiles.length === 0 && !supabaseService.isConfigured()) {
+            localStorage.setItem('pl_users', JSON.stringify(INITIAL_USERS));
+            setUsers(INITIAL_USERS);
+          } else {
+            setUsers(allProfiles);
+          }
+        }
+      } catch (err) {
+        console.error("Session initialization error:", err);
       }
-    }
-
-    // Restore routing state if saved
-    const savedPage = localStorage.getItem('pl_current_page');
-    if (savedPage) {
-      setCurrentPage(savedPage as any);
-    }
-
-    const savedConvId = localStorage.getItem('pl_active_conv_id');
-    if (savedConvId) {
-      setActiveConversationId(savedConvId);
-    }
-
-    if (localPosts) setPosts(JSON.parse(localPosts));
-    else {
-      setPosts(INITIAL_POSTS);
-      localStorage.setItem('pl_posts', JSON.stringify(INITIAL_POSTS));
-    }
-
-    if (localStories) setStories(JSON.parse(localStories));
-    else {
-      setStories(INITIAL_STORIES);
-      localStorage.setItem('pl_stories', JSON.stringify(INITIAL_STORIES));
-    }
-
-    if (localConversations) setConversations(JSON.parse(localConversations));
-    else {
-      setConversations(INITIAL_CONVERSATIONS);
-      localStorage.setItem('pl_conversations', JSON.stringify(INITIAL_CONVERSATIONS));
-    }
-
-    if (localNotifications) setNotifications(JSON.parse(localNotifications));
-    else {
-      setNotifications(INITIAL_NOTIFICATIONS);
-      localStorage.setItem('pl_notifications', JSON.stringify(INITIAL_NOTIFICATIONS));
-    }
-
-    if (localProfile) setChildProfile(JSON.parse(localProfile));
-    else {
-      setChildProfile(INITIAL_CHILD_PROFILE);
-      localStorage.setItem('pl_child_profile', JSON.stringify(INITIAL_CHILD_PROFILE));
-    }
+    };
+    initSession();
   }, []);
 
-  // SYNCHRONISERS
-  const syncUsers = (newUsers: User[]) => {
-    setUsers(newUsers);
-    localStorage.setItem('pl_users', JSON.stringify(newUsers));
-  };
+  // Fetch all app data when currentUser changes
+  useEffect(() => {
+    if (!currentUser) {
+      setUsers([]);
+      setPosts([]);
+      setStories([]);
+      setConversations([]);
+      setNotifications([]);
+      return;
+    }
 
-  const syncPosts = (newPosts: Post[]) => {
-    setPosts(newPosts);
-    localStorage.setItem('pl_posts', JSON.stringify(newPosts));
-  };
+    const loadAppData = async () => {
+      try {
+        const [allProfiles, allPosts, allStories, allConvs, allNotifs] = await Promise.all([
+          supabaseService.getProfiles(),
+          supabaseService.getPosts(),
+          supabaseService.getStories(),
+          supabaseService.getConversations(currentUser.id),
+          supabaseService.getNotifications(currentUser.id)
+        ]);
 
-  const syncStories = (newStories: Story[]) => {
-    setStories(newStories);
-    localStorage.setItem('pl_stories', JSON.stringify(newStories));
-  };
+        setUsers(allProfiles);
+        setPosts(allPosts);
+        setStories(allStories);
+        setConversations(allConvs);
+        setNotifications(allNotifs);
 
-  const syncConversations = (newConvs: Conversation[]) => {
-    setConversations(newConvs);
-    localStorage.setItem('pl_conversations', JSON.stringify(newConvs));
-  };
+        if (currentUser.role === 'parent') {
+          const profileData = await supabaseService.getChildProfile(currentUser.id);
+          setChildProfile(profileData);
+        }
+      } catch (err) {
+        console.error("Error loading application data:", err);
+      }
+    };
 
-  const syncNotifications = (newNotifs: Notification[]) => {
-    setNotifications(newNotifs);
-    localStorage.setItem('pl_notifications', JSON.stringify(newNotifs));
-  };
-
-  const syncProfile = (newProfile: ChildProfileData) => {
-    setChildProfile(newProfile);
-    localStorage.setItem('pl_child_profile', JSON.stringify(newProfile));
-  };
+    loadAppData();
+  }, [currentUser]);
 
   // Synchronize Session & Routing to LocalStorage
   useEffect(() => {
@@ -340,236 +303,184 @@ function App() {
   }, [activeConversationId]);
 
   // 1. Social Follow / Unfollow Toggler
-  const handleToggleFollow = (targetUserId: string) => {
+  const handleToggleFollow = async (targetUserId: string) => {
     if (!currentUser) return;
-
     const isFollowing = currentUser.following.includes(targetUserId);
-    let updatedFollowing = [];
-
-    if (isFollowing) {
-      updatedFollowing = currentUser.following.filter(id => id !== targetUserId);
-    } else {
-      updatedFollowing = [...currentUser.following, targetUserId];
+    try {
+      await supabaseService.toggleFollow(currentUser.id, targetUserId, isFollowing);
+      const updatedUser = await supabaseService.getUserProfile(currentUser.id);
+      setCurrentUser(updatedUser);
+      const allProfiles = await supabaseService.getProfiles();
+      setUsers(allProfiles);
+    } catch (err) {
+      console.error("Error toggling follow:", err);
     }
-
-    const updatedCurrentUser = {
-      ...currentUser,
-      following: updatedFollowing
-    };
-
-    setCurrentUser(updatedCurrentUser);
-
-    // Save back to users list
-    const updatedUsers = users.map(u => u.id === currentUser.id ? updatedCurrentUser : u);
-    syncUsers(updatedUsers);
   };
 
   // 2. Chat Navigator / Conversation Starter
-  const handleStartChat = (targetUserId: string) => {
+  const handleStartChat = async (targetUserId: string) => {
     if (!currentUser) return;
-
-    // Search for existing conversation
-    const existing = conversations.find(
-      c => c.participants.includes(currentUser.id) && c.participants.includes(targetUserId)
-    );
-
-    if (existing) {
-      setActiveConversationId(existing.id);
+    try {
+      const conv = await supabaseService.startConversation(currentUser.id, targetUserId);
+      const allConvs = await supabaseService.getConversations(currentUser.id);
+      setConversations(allConvs);
+      setActiveConversationId(conv.id);
       setCurrentPage('messages');
-    } else {
-      // Create new conversation
-      const newConv: Conversation = {
-        id: `conv-${Date.now()}`,
-        participants: [currentUser.id, targetUserId],
-        messages: []
-      };
-
-      const updatedConvs = [newConv, ...conversations];
-      syncConversations(updatedConvs);
-      setActiveConversationId(newConv.id);
-      setCurrentPage('messages');
+    } catch (err) {
+      console.error("Error starting chat:", err);
     }
   };
 
   // 3. Post Likes Toggler
-  const handleLikePost = (postId: string) => {
+  const handleLikePost = async (postId: string) => {
     if (!currentUser) return;
-
-    const updatedPosts = posts.map((post) => {
-      if (post.id === postId) {
-        const hasLiked = post.likes.includes(currentUser.id);
-        let newLikes = [];
-
-        if (hasLiked) {
-          newLikes = post.likes.filter(id => id !== currentUser.id);
-        } else {
-          newLikes = [...post.likes, currentUser.id];
-          
-          // Send notification to author
-          if (post.authorId !== currentUser.id) {
-            const newNotif: Notification = {
-              id: `notif-${Date.now()}`,
-              userId: post.authorId,
-              text: `${currentUser.name} a aimé votre publication "${post.tag}".`,
-              time: 'À l\'instant',
-              isRead: false,
-              type: 'like'
-            };
-            syncNotifications([newNotif, ...notifications]);
-          }
-        }
-
-        return {
-          ...post,
-          likes: newLikes
-        };
+    const post = posts.find(p => p.id === postId);
+    if (!post) return;
+    const hasLiked = post.likes.includes(currentUser.id);
+    try {
+      await supabaseService.toggleLikePost(postId, currentUser.id, hasLiked);
+      
+      // Send notification to author if liking
+      if (!hasLiked && post.authorId !== currentUser.id) {
+        await supabaseService.createNotification(
+          post.authorId,
+          `${currentUser.name} a aimé votre publication "${post.tag}".`,
+          'like'
+        );
       }
-      return post;
-    });
-
-    syncPosts(updatedPosts);
+      
+      const allPosts = await supabaseService.getPosts();
+      setPosts(allPosts);
+    } catch (err) {
+      console.error("Error liking post:", err);
+    }
   };
 
   // 4. Comments Submitter
-  const handleAddComment = (postId: string, text: string) => {
+  const handleAddComment = async (postId: string, text: string) => {
     if (!currentUser) return;
-
-    const newComment: PostComment = {
-      id: `comment-${Date.now()}`,
-      authorName: currentUser.name,
-      text,
-      time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-    };
-
-    const updatedPosts = posts.map((post) => {
-      if (post.id === postId) {
-        // Send notification to author
-        if (post.authorId !== currentUser.id) {
-          const newNotif: Notification = {
-            id: `notif-${Date.now()}`,
-            userId: post.authorId,
-            text: `${currentUser.name} a commenté votre publication : "${text.substring(0, 20)}..."`,
-            time: 'À l\'instant',
-            isRead: false,
-            type: 'comment'
-          };
-          syncNotifications([newNotif, ...notifications]);
-        }
-
-        return {
-          ...post,
-          comments: [...post.comments, newComment]
-        };
+    const post = posts.find(p => p.id === postId);
+    if (!post) return;
+    try {
+      await supabaseService.addComment(postId, currentUser.id, text);
+      
+      // Send notification to author
+      if (post.authorId !== currentUser.id) {
+        await supabaseService.createNotification(
+          post.authorId,
+          `${currentUser.name} a commenté votre publication : "${text.substring(0, 20)}..."`,
+          'comment'
+        );
       }
-      return post;
-    });
-
-    syncPosts(updatedPosts);
+      
+      const allPosts = await supabaseService.getPosts();
+      setPosts(allPosts);
+    } catch (err) {
+      console.error("Error adding comment:", err);
+    }
   };
 
   // 5. Publisher of New Posts
-  const handleAddPost = (tag: string, image: string, description: string) => {
+  const handleAddPost = async (tag: string, image: string, description: string) => {
     if (!currentUser) return;
-
-    const newPost: Post = {
-      id: `post-${Date.now()}`,
-      authorId: currentUser.id,
-      authorName: currentUser.name,
-      authorAvatar: currentUser.avatar,
-      tag,
-      image,
-      description,
-      likes: [],
-      time: 'À l\'instant',
-      comments: []
-    };
-
-    syncPosts([newPost, ...posts]);
+    try {
+      await supabaseService.createPost(currentUser.id, tag, image, description);
+      const allPosts = await supabaseService.getPosts();
+      setPosts(allPosts);
+    } catch (err) {
+      console.error("Error adding post:", err);
+    }
   };
 
   // 6. Publisher of New Stories
-  const handleAddStory = (image: string, tag?: string) => {
+  const handleAddStory = async (image: string, tag?: string) => {
     if (!currentUser) return;
-
-    const newStory: Story = {
-      id: `story-${Date.now()}`,
-      authorId: currentUser.id,
-      authorName: currentUser.name,
-      authorAvatar: currentUser.avatar,
-      image,
-      time: 'À l\'instant',
-      tag
-    };
-
-    syncStories([newStory, ...stories]);
+    try {
+      await supabaseService.createStory(currentUser.id, image, tag);
+      const allStories = await supabaseService.getStories();
+      setStories(allStories);
+    } catch (err) {
+      console.error("Error adding story:", err);
+    }
   };
 
   // 7. Message Submitter & Auto-Notifier
-  const handleSendMessage = (conversationId: string, text: string) => {
+  const handleSendMessage = async (conversationId: string, text: string) => {
     if (!currentUser) return;
-
     const targetConv = conversations.find(c => c.id === conversationId);
     if (!targetConv) return;
-
     const recipientId = targetConv.participants.find(id => id !== currentUser.id) || '';
 
-    const newMsg: ChatMessage = {
-      id: `msg-${Date.now()}`,
-      senderId: currentUser.id,
-      senderName: currentUser.name,
-      text,
-      time: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
-    };
-
-    const updatedConvs = conversations.map((c) => {
-      if (c.id === conversationId) {
-        return {
-          ...c,
-          messages: [...c.messages, newMsg]
-        };
+    try {
+      await supabaseService.sendMessage(conversationId, currentUser.id, text);
+      
+      if (recipientId) {
+        await supabaseService.createNotification(
+          recipientId,
+          `Nouveau message de ${currentUser.name} : "${text.substring(0, 20)}..."`,
+          'message'
+        );
       }
-      return c;
-    });
-
-    syncConversations(updatedConvs);
-
-    // Create message notification for recipient
-    const newNotif: Notification = {
-      id: `notif-${Date.now()}`,
-      userId: recipientId,
-      text: `Nouveau message de ${currentUser.name} : "${text.substring(0, 20)}..."`,
-      time: 'À l\'instant',
-      isRead: false,
-      type: 'message'
-    };
-    syncNotifications([newNotif, ...notifications]);
+      
+      const allConvs = await supabaseService.getConversations(currentUser.id);
+      setConversations(allConvs);
+    } catch (err) {
+      console.error("Error sending message:", err);
+    }
   };
 
   // 8. Registering New User Accounts
   const handleSignup = (newUser: User) => {
-    const updatedUsers = [...users, newUser];
-    syncUsers(updatedUsers);
+    supabaseService.getProfiles().then(setUsers);
   };
 
-  const handleMarkNotificationsRead = () => {
+  const handleMarkNotificationsRead = async () => {
     if (!currentUser) return;
-    const updated = notifications.map(n => n.userId === currentUser.id ? { ...n, isRead: true } : n);
-    syncNotifications(updated);
+    try {
+      await supabaseService.markNotificationsAsRead(currentUser.id);
+      const allNotifs = await supabaseService.getNotifications(currentUser.id);
+      setNotifications(allNotifs);
+    } catch (err) {
+      console.error("Error marking notifications read:", err);
+    }
   };
 
-  const handleUpdateUser = (updatedUser: User) => {
-    setCurrentUser(updatedUser);
-    const updatedUsers = users.map(u => u.id === updatedUser.id ? updatedUser : u);
-    syncUsers(updatedUsers);
+  const handleUpdateUser = async (updatedUser: User) => {
+    try {
+      await supabaseService.updateProfile(updatedUser);
+      setCurrentUser(updatedUser);
+      const allProfiles = await supabaseService.getProfiles();
+      setUsers(allProfiles);
+    } catch (err) {
+      console.error("Error updating user:", err);
+    }
   };
 
-  const handleLogout = () => {
-    setCurrentUser(null);
-    setCurrentPage('feed');
+  const handleLogout = async () => {
+    try {
+      await supabaseService.signOut();
+      setCurrentUser(null);
+      setCurrentPage('feed');
+      localStorage.removeItem('pl_current_user_id');
+      localStorage.removeItem('pl_current_page');
+      localStorage.removeItem('pl_active_conv_id');
+    } catch (err) {
+      console.error("Error signing out:", err);
+    }
+  };
+
+  const syncProfile = async (newProfile: ChildProfileData) => {
+    if (!currentUser) return;
+    try {
+      await supabaseService.updateChildProfile(currentUser.id, newProfile);
+      setChildProfile(newProfile);
+    } catch (err) {
+      console.error("Error updating child profile:", err);
+    }
   };
 
   // Filter notifications for active logged-in user
-  const userNotifications = notifications.filter(n => n.userId === (currentUser?.id || ''));
+  const userNotifications = notifications;
 
   if (!currentUser) {
     return (

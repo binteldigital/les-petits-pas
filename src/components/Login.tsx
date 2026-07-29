@@ -1,5 +1,6 @@
 import React, { useState, useRef } from 'react';
 import type { User } from '../types';
+import { supabaseService } from '../supabaseService';
 
 interface LoginProps {
   users: User[];
@@ -66,14 +67,14 @@ export const Login: React.FC<LoginProps> = ({ users, onLoginSuccess, onSignup })
     setOtp(Array(6).fill(''));
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage(null);
     setIsVerifying(true);
 
     const enteredOtp = otp.join('');
 
-    setTimeout(() => {
+    try {
       if (selectedRole === 'admin') {
         // Strict Admin Credentials check
         if (email.toLowerCase() !== 'admin@petitlien.fr' || password !== 'admin' || enteredOtp !== '123456') {
@@ -82,10 +83,11 @@ export const Login: React.FC<LoginProps> = ({ users, onLoginSuccess, onSignup })
           return;
         }
 
-        setIsVerifying(false);
-        setIsSuccess(true);
-        setTimeout(() => {
-          const adminUser = users.find(u => u.role === 'admin' && u.email === 'admin@petitlien.fr') || {
+        const adminUser = await supabaseService.signIn(email, password).catch(async (err) => {
+          if (supabaseService.isConfigured()) {
+            throw err;
+          }
+          return users.find(u => u.role === 'admin' && u.email === 'admin@petitlien.fr') || {
             id: 'user-admin',
             name: 'Direction Crèche',
             email: 'admin@petitlien.fr',
@@ -93,6 +95,11 @@ export const Login: React.FC<LoginProps> = ({ users, onLoginSuccess, onSignup })
             role: 'admin',
             following: []
           };
+        });
+
+        setIsVerifying(false);
+        setIsSuccess(true);
+        setTimeout(() => {
           onLoginSuccess(adminUser);
         }, 800);
 
@@ -106,42 +113,34 @@ export const Login: React.FC<LoginProps> = ({ users, onLoginSuccess, onSignup })
             return;
           }
 
-          // Check duplicate email
-          const emailExists = users.some(u => u.email.toLowerCase() === email.toLowerCase());
-          if (emailExists) {
-            setIsVerifying(false);
-            setErrorMessage("Cette adresse email est déjà enregistrée. Veuillez vous connecter dans l'espace Parent.");
-            return;
-          }
+          const newRegisteredUser = await supabaseService.signUp(email, password, {
+            name: fullName || 'Nouvel Utilisateur',
+            role: 'parent',
+            childName: childName || 'Mon Enfant',
+            avatar: avatarFileUrl || undefined
+          });
 
           setIsVerifying(false);
           setIsSuccess(true);
           setTimeout(() => {
-            const newRegisteredUser: User = {
-              id: `user-${Date.now()}`,
-              name: fullName || 'Nouvel Utilisateur',
-              email: email,
-              avatar: avatarFileUrl || 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&q=80&w=100',
-              role: 'parent',
-              following: [],
-              childName: childName || 'Mon Enfant',
-              username: (fullName || 'parent').toLowerCase().replace(/\s+/g, '_') + '_' + Math.floor(Math.random() * 100)
-            };
             onSignup(newRegisteredUser);
             onLoginSuccess(newRegisteredUser);
           }, 800);
 
         } else {
-          // Parent Login lookup
-          const foundUser = users.find(
-            u => u.role === 'parent' && u.email.toLowerCase() === email.toLowerCase()
-          );
-
-          if (!foundUser) {
-            setIsVerifying(false);
-            setErrorMessage("Compte parent introuvable. Veuillez vérifier vos identifiants ou créer un compte.");
-            return;
-          }
+          // Parent Login
+          const foundUser = await supabaseService.signIn(email, password).catch(async (err) => {
+            if (supabaseService.isConfigured()) {
+              throw err;
+            }
+            const localUser = users.find(
+              u => u.role === 'parent' && u.email.toLowerCase() === email.toLowerCase()
+            );
+            if (!localUser) {
+              throw new Error("Compte parent introuvable. Veuillez vérifier vos identifiants ou créer un compte.");
+            }
+            return localUser;
+          });
 
           setIsVerifying(false);
           setIsSuccess(true);
@@ -150,7 +149,10 @@ export const Login: React.FC<LoginProps> = ({ users, onLoginSuccess, onSignup })
           }, 800);
         }
       }
-    }, 1500);
+    } catch (err: any) {
+      setIsVerifying(false);
+      setErrorMessage(err.message || "Une erreur s'est produite lors de l'authentification.");
+    }
   };
 
   const toggleMode = () => {
