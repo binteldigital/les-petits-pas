@@ -153,14 +153,6 @@ create table public.conversations (
 
 alter table public.conversations enable row level security;
 
-create policy "Users can view conversations they are part of" on public.conversations
-    for select using (
-        exists (
-            select 1 from public.conversation_participants
-            where conversation_id = id and user_id = auth.uid()
-        )
-    );
-
 
 -- 8. CONVERSATION PARTICIPANTS JONCTION TABLE
 create table public.conversation_participants (
@@ -170,6 +162,15 @@ create table public.conversation_participants (
 );
 
 alter table public.conversation_participants enable row level security;
+
+-- Policies for Conversations (declared after participants table creation to avoid relation not found error)
+create policy "Users can view conversations they are part of" on public.conversations
+    for select using (
+        exists (
+            select 1 from public.conversation_participants
+            where conversation_id = id and user_id = auth.uid()
+        )
+    );
 
 create policy "Users can see participants in their conversations" on public.conversation_participants
     for select using (
