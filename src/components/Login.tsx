@@ -92,8 +92,8 @@ export const Login: React.FC<LoginProps> = ({ users, onLoginSuccess, onSignup })
             name: 'Direction Crèche',
             email: 'admin@petitlien.fr',
             avatar: 'https://lh3.googleusercontent.com/aida-public/AB6AXuAWqqKTJzU_6SGZZlh4uDmtKctGql2FiP4Pqx7fQrFcKBUeiDQxM-mvIo6dvp2kZC1VOQ9Hv_4ZCkPKCCCWNueVqYUmHw-lCFXkuiagIFMqv5pRibbrRP2sRu9iamS5Vr0CAVf3yfHfhG0YVKLRC8vgf8YqNYNXDnaa0LAy8oH2YHnhBktjx4qo9tN7Uh6p6TWeWV9mSGMHrvYoeb0GBnPhep6pqEagY4dmfS6QLw1o-ccncNVB8BBOOAcYjtY5By2JzGhYC3QO-1zJ',
-            role: 'admin',
-            following: []
+            role: 'admin' as const,
+            following: [] as string[]
           };
         });
 

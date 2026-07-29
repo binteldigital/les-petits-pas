@@ -143,7 +143,7 @@ export const supabaseService = {
       .select('followed_id')
       .eq('follower_id', userId);
 
-    const followingIds = (followings || []).map(f => f.followed_id);
+    const followingIds = (followings || []).map((f: any) => f.followed_id);
 
     return {
       id: profile.id,
@@ -177,13 +177,13 @@ export const supabaseService = {
       .from('follows')
       .select('*');
 
-    const followsMap = (follows || []).reduce((acc: Record<string, string[]>, curr) => {
+    const followsMap = (follows || []).reduce((acc: Record<string, string[]>, curr: any) => {
       if (!acc[curr.follower_id]) acc[curr.follower_id] = [];
       acc[curr.follower_id].push(curr.followed_id);
       return acc;
     }, {});
 
-    return profiles.map(p => ({
+    return profiles.map((p: any) => ({
       id: p.id,
       name: p.name,
       email: p.email,
@@ -510,7 +510,7 @@ export const supabaseService = {
       .select('conversation_id')
       .eq('user_id', userId);
 
-    const convIds = (participations || []).map(p => p.conversation_id);
+    const convIds = (participations || []).map((p: any) => p.conversation_id);
     if (convIds.length === 0) return [];
 
     // 2. Fetch full conversation structures
@@ -567,7 +567,7 @@ export const supabaseService = {
       if (existing) return existing;
 
       const newConv: Conversation = {
-        id: `conv-${CreatorId}-${recipientId}`,
+        id: `conv-${creatorId}-${recipientId}`,
         participants: [creatorId, recipientId],
         messages: []
       };

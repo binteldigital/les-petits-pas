@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import type { User, Post, Story, Conversation, Notification, ChatMessage, PostComment, ChildProfileData } from './types';
+import type { User, Post, Story, Conversation, Notification, ChildProfileData } from './types';
 import { Login } from './components/Login';
 import { Feed } from './components/Feed';
 import { Messages } from './components/Messages';
@@ -58,7 +58,7 @@ const INITIAL_USERS: User[] = [
   }
 ];
 
-const INITIAL_STORIES: Story[] = [
+export const INITIAL_STORIES: Story[] = [
   {
     id: 'story-1',
     authorId: 'user-admin',
@@ -79,7 +79,7 @@ const INITIAL_STORIES: Story[] = [
   }
 ];
 
-const INITIAL_POSTS: Post[] = [
+export const INITIAL_POSTS: Post[] = [
   {
     id: 'post-1',
     authorId: 'user-admin',
@@ -110,7 +110,7 @@ const INITIAL_POSTS: Post[] = [
   }
 ];
 
-const INITIAL_CONVERSATIONS: Conversation[] = [
+export const INITIAL_CONVERSATIONS: Conversation[] = [
   {
     id: 'conv-1',
     participants: ['user-parent', 'user-admin'],
@@ -144,7 +144,7 @@ const INITIAL_CONVERSATIONS: Conversation[] = [
   }
 ];
 
-const INITIAL_NOTIFICATIONS: Notification[] = [
+export const INITIAL_NOTIFICATIONS: Notification[] = [
   {
     id: 'notif-1',
     userId: 'user-parent',
@@ -430,7 +430,7 @@ function App() {
   };
 
   // 8. Registering New User Accounts
-  const handleSignup = (newUser: User) => {
+  const handleSignup = (_newUser: User) => {
     supabaseService.getProfiles().then(setUsers);
   };
 
